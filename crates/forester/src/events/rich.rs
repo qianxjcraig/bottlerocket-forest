@@ -82,6 +82,28 @@ impl EventEmitter for RichEmitter {
             ForesterEvent::MemberSkipped { name, reason } => {
                 self.mp.suspend(|| eprintln!("⚠ {name} skipped: {reason}"));
             }
+            ForesterEvent::GroveUpdateStarted { grove } => {
+                let bar = self.spinner(&format!("Updating grove '{}'", grove));
+                *self.lock_bar() = Some(bar);
+            }
+            ForesterEvent::MemberUpdating { name } => {
+                if let Some(bar) = self.lock_bar().as_ref() {
+                    bar.set_message(format!("Updating {}", name));
+                }
+            }
+            ForesterEvent::MemberUpdated { name, detail } => {
+                self.finish_current();
+                eprintln!("  ↑ {name} ({detail})");
+            }
+            ForesterEvent::MemberCurrent { .. } => {}
+            ForesterEvent::GroveUpdateCompleted {
+                grove,
+                updated,
+                skipped,
+            } => {
+                self.finish_current();
+                eprintln!("✓ Grove '{grove}' updated ({updated} advanced, {skipped} untouched)");
+            }
             ForesterEvent::SyncSeedCompleted => {
                 self.finish_current();
                 eprintln!("✓ Forest synced");

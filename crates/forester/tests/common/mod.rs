@@ -61,9 +61,88 @@ pub fn forester_grove(cwd: &Path, subcmd: &str, args: &[&str]) -> (i32, String, 
     forester_cmd(cwd, &full_args)
 }
 
+/// Run forester grove update in the given directory
+pub fn forester_grove_update(cwd: &Path, args: &[&str]) -> (i32, String, String) {
+    forester_grove(cwd, "update", args)
+}
+
+/// Run the top-level forester update in the given directory
+pub fn forester_update(cwd: &Path, args: &[&str]) -> (i32, String, String) {
+    let mut full_args = vec!["update"];
+    full_args.extend(args);
+    forester_cmd(cwd, &full_args)
+}
+
 /// Create a temp directory for testing
 pub fn temp_forest() -> TempDir {
     TempDir::new().expect("Failed to create temp directory")
+}
+
+/// Run a git command in the given repo, returning trimmed stdout
+pub fn git(repo: &Path, args: &[&str]) -> String {
+    let output = Command::new("git")
+        .current_dir(repo)
+        .args(args)
+        .output()
+        .expect("Failed to execute git");
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+/// Run a git command, asserting that it succeeded
+pub fn git_ok(repo: &Path, args: &[&str]) -> String {
+    let output = Command::new("git")
+        .current_dir(repo)
+        .args(args)
+        .output()
+        .expect("Failed to execute git");
+    assert!(
+        output.status.success(),
+        "git {:?} failed in {}: {}",
+        args,
+        repo.display(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+/// Resolve a revision to a full SHA, or None when it does not exist
+pub fn rev_parse(repo: &Path, rev: &str) -> Option<String> {
+    let sha = git(repo, &["rev-parse", "--verify", "--quiet", rev]);
+    (!sha.is_empty()).then_some(sha)
+}
+
+/// Commit in a checkout without relying on ambient git identity config
+pub fn commit_in(repo: &Path, message: &str) -> String {
+    git_ok(
+        repo,
+        &[
+            "-c",
+            "user.email=test@test.com",
+            "-c",
+            "user.name=Test",
+            "commit",
+            "--allow-empty",
+            "-m",
+            message,
+        ],
+    );
+    git_ok(repo, &["rev-parse", "HEAD"])
+}
+
+/// Add a commit to a bare "upstream" repo by cloning, committing, and pushing
+pub fn push_commit_upstream(bare_upstream: &Path, message: &str) -> String {
+    let temp = TempDir::new().expect("Failed to create temp directory");
+    let clone = temp.path().join("clone");
+    Command::new("git")
+        .args(["clone"])
+        .arg(bare_upstream)
+        .arg(&clone)
+        .output()
+        .expect("Failed to clone upstream");
+
+    let sha = commit_in(&clone, message);
+    git_ok(&clone, &["push", "origin", "HEAD:main"]);
+    sha
 }
 
 /// Initialize a git repo in the given directory

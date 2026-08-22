@@ -13,6 +13,10 @@ pub enum Trigger {
     PreGroveCreate,
     /// After creating a grove.
     PostGroveCreate,
+    /// Before updating a grove.
+    PreGroveUpdate,
+    /// After updating a grove.
+    PostGroveUpdate,
     /// Before removing a grove.
     PreGroveRemove,
     /// After removing a grove.
@@ -27,6 +31,8 @@ impl Trigger {
             "post-seed" => Some(Self::PostSeed),
             "pre-grove-create" => Some(Self::PreGroveCreate),
             "post-grove-create" => Some(Self::PostGroveCreate),
+            "pre-grove-update" => Some(Self::PreGroveUpdate),
+            "post-grove-update" => Some(Self::PostGroveUpdate),
             "pre-grove-remove" => Some(Self::PreGroveRemove),
             "post-grove-remove" => Some(Self::PostGroveRemove),
             _ => None,
@@ -40,6 +46,8 @@ impl Trigger {
             Self::PostSeed => "post-seed",
             Self::PreGroveCreate => "pre-grove-create",
             Self::PostGroveCreate => "post-grove-create",
+            Self::PreGroveUpdate => "pre-grove-update",
+            Self::PostGroveUpdate => "post-grove-update",
             Self::PreGroveRemove => "pre-grove-remove",
             Self::PostGroveRemove => "post-grove-remove",
         }

@@ -25,6 +25,7 @@ pub fn run() -> miette::Result<()> {
         Command::Init(args) => commands::init(args),
         Command::Seed(args) => commands::seed(args),
         Command::SyncSeed(args) => commands::sync_seed(args),
+        Command::Update(args) => commands::update(args),
         Command::Grove(cmd) => commands::grove(cmd),
     }
 }

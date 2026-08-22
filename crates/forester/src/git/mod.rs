@@ -4,6 +4,8 @@
 
 mod bare;
 mod command;
+mod member;
 
 pub use bare::BareRepository;
-pub use command::GitCommandError;
+pub use command::{GitCommandError, GitOutcome};
+pub use member::{AheadBehind, MemberRepository, short_sha};

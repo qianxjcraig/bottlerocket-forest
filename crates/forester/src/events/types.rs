@@ -86,6 +86,37 @@ pub enum ForesterEvent {
     },
     /// Sync-seed has completed.
     SyncSeedCompleted,
+    /// A grove update has started.
+    GroveUpdateStarted {
+        /// Grove name.
+        grove: String,
+    },
+    /// A grove member is being updated.
+    MemberUpdating {
+        /// Member name.
+        name: String,
+    },
+    /// A grove member was advanced.
+    MemberUpdated {
+        /// Member name.
+        name: String,
+        /// What changed, e.g. "fast-forwarded +12".
+        detail: String,
+    },
+    /// A grove member was already current.
+    MemberCurrent {
+        /// Member name.
+        name: String,
+    },
+    /// A grove update has completed.
+    GroveUpdateCompleted {
+        /// Grove name.
+        grove: String,
+        /// Members advanced.
+        updated: usize,
+        /// Members deliberately left untouched.
+        skipped: usize,
+    },
     /// An error message.
     Error(String),
 }

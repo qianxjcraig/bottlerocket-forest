@@ -1134,6 +1134,7 @@ dependencies = [
  "serde",
  "snafu",
  "tempfile",
+ "test-case",
  "toml",
  "tracing",
  "tracing-subscriber",

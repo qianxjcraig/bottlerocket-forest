@@ -27,6 +27,16 @@ pub enum GitCommandError {
         /// The underlying IO error.
         source: std::io::Error,
     },
+
+    /// Git succeeded but produced output that could not be interpreted.
+    #[snafu(display("Could not interpret output of 'git {command}'"))]
+    #[diagnostic(help("{detail}"))]
+    UnexpectedOutput {
+        /// The git subcommand that ran.
+        command: String,
+        /// What could not be interpreted.
+        detail: String,
+    },
 }
 
 /// Builder for git commands that always captures stderr.
@@ -77,6 +87,26 @@ impl GitCommand {
 
     /// Executes the command.
     pub fn run(self) -> Result<(), GitCommandError> {
+        let quiet = self.quiet_stdout;
+        let outcome = self.run_output()?;
+
+        if !quiet && !outcome.stdout.is_empty() {
+            println!("{}", outcome.stdout);
+        }
+
+        outcome.into_success().map(|_| ())
+    }
+
+    /// Executes the command and returns its stdout, failing on a nonzero exit.
+    pub fn run_capture(self) -> Result<String, GitCommandError> {
+        self.run_output()?.into_success()
+    }
+
+    /// Executes the command, treating a nonzero exit as data rather than failure.
+    ///
+    /// Use for probes such as `rev-parse --verify`, where "this ref does not
+    /// exist" is an answer and not an error.
+    pub fn run_output(self) -> Result<GitOutcome, GitCommandError> {
         use git_command_error::*;
 
         let mut cmd = Command::new("git");
@@ -88,23 +118,52 @@ impl GitCommand {
 
         let output = cmd.output().context(IoSnafu)?;
 
-        if !self.quiet_stdout && !output.stdout.is_empty() {
-            use std::io::Write;
-            let _ = std::io::stdout().write_all(&output.stdout);
-        }
-
-        if output.status.success() {
-            return Ok(());
-        }
-
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let command = self.args.first().cloned().unwrap_or_default();
-
-        CommandFailedSnafu {
-            command,
+        Ok(GitOutcome {
+            command: self.args.first().cloned().unwrap_or_default(),
+            success: output.status.success(),
             exit_code: output.status.code(),
-            stderr,
-        }
-        .fail()
+            stdout: String::from_utf8_lossy(&output.stdout).trim().to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        })
+    }
+}
+
+/// Captured result of a git invocation.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct GitOutcome {
+    /// The git subcommand that ran.
+    pub command: String,
+    /// Whether git exited successfully.
+    pub success: bool,
+    /// Exit code reported by git.
+    pub exit_code: Option<i32>,
+    /// Trimmed stdout.
+    pub stdout: String,
+    /// Trimmed stderr.
+    pub stderr: String,
+}
+
+impl GitOutcome {
+    /// Returns stdout, converting a nonzero exit into an error.
+    pub fn into_success(self) -> Result<String, GitCommandError> {
+        use git_command_error::*;
+
+        snafu::ensure!(
+            self.success,
+            CommandFailedSnafu {
+                command: self.command,
+                exit_code: self.exit_code,
+                stderr: self.stderr,
+            }
+        );
+        Ok(self.stdout)
+    }
+
+    /// Returns stdout when the command succeeded and produced output.
+    pub fn optional_stdout(self) -> Option<String> {
+        self.success
+            .then_some(self.stdout)
+            .filter(|out| !out.is_empty())
     }
 }

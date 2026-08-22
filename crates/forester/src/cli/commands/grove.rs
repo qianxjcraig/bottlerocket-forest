@@ -1,15 +1,18 @@
 //! Grove command handlers.
 
-use crate::cli::args::{GroveCommand, GroveCreateArgs, GroveRemoveArgs};
-use crate::domain::{ForestConfig, ForestRoot, GroveName};
+use crate::cli::args::{GroveCommand, GroveCreateArgs, GroveRemoveArgs, GroveUpdateArgs};
+use crate::cli::commands::config::find_config;
+use crate::domain::{ForestRoot, GroveName};
 use crate::events::{ConsoleEmitter, EventEmitter};
 use crate::grove::GroveContext;
 use crate::hooks::HookRegistry;
-use crate::ops::{GroveCreateOperation, GroveListOperation, GroveRemoveOperation};
+use crate::ops::{
+    GroveCreateOperation, GroveListOperation, GroveRemoveOperation, GroveUpdateOperation,
+    MemberOutcome, UpdateOptions, UpdateReport,
+};
 use miette::Diagnostic;
 use owo_colors::OwoColorize;
-use snafu::Snafu;
-use std::path::Path;
+use snafu::{OptionExt, Snafu};
 use std::sync::Arc;
 
 #[derive(Debug, Snafu, Diagnostic)]
@@ -18,6 +21,10 @@ pub enum GroveError {
     #[snafu(display("cannot remove grove '{name}' while inside it"))]
     #[diagnostic(help("Change to a directory outside the grove before removing it"))]
     RemoveCurrentGrove { name: String },
+
+    #[snafu(display("no grove named and not currently inside one"))]
+    #[diagnostic(help("Name the grove explicitly, e.g. 'forester grove update develop'"))]
+    NoGroveSelected,
 }
 
 pub fn run(cmd: GroveCommand) -> miette::Result<()> {
@@ -27,6 +34,88 @@ pub fn run(cmd: GroveCommand) -> miette::Result<()> {
         GroveCommand::Remove(args) => remove(args),
         GroveCommand::Status => status_cmd(),
         GroveCommand::Current => current(),
+        GroveCommand::Update(args) => update(args),
+    }
+}
+
+fn update(args: GroveUpdateArgs) -> miette::Result<()> {
+    let grove_name = resolve_grove(args.name)?;
+    let (forest_path, config) = find_config()?;
+    let forest_root = ForestRoot::builder().path(&forest_path).build();
+    let emitter: Arc<dyn EventEmitter> = Arc::new(ConsoleEmitter::new(args.verbose));
+    let hooks = HookRegistry::from_config(&config.hook).map_err(|e| miette::miette!("{}", e))?;
+
+    let opts = UpdateOptions {
+        strategy: args.strategy.into(),
+        members: args.members,
+        dry_run: args.dry_run,
+    };
+
+    if args.dry_run {
+        println!("{} dry run; no checkout will be touched", "!".yellow());
+    }
+
+    let op = GroveUpdateOperation::new(
+        &forest_root,
+        &config,
+        &hooks,
+        Arc::clone(&emitter),
+        args.verbose,
+    );
+    let report = op
+        .execute(&grove_name, &opts)
+        .map_err(|e| miette::miette!("{}", e))?;
+
+    render_update(&report);
+
+    if report.has_failures() {
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+/// Resolves the grove to act on, defaulting to the current grove.
+pub fn resolve_grove(name: Option<String>) -> miette::Result<GroveName> {
+    use grove_error::*;
+
+    let raw = match name {
+        Some(name) => name,
+        None => GroveContext::detect()
+            .ok()
+            .flatten()
+            .map(|ctx| ctx.name().to_string())
+            .context(NoGroveSelectedSnafu)?,
+    };
+
+    GroveName::try_new(raw).map_err(|e| miette::miette!("{}", e))
+}
+
+/// Prints the members an update declined to touch, each with its next step.
+pub fn render_update(report: &UpdateReport) {
+    let skipped: Vec<_> = report.skipped().collect();
+    if skipped.is_empty() {
+        return;
+    }
+
+    let width = skipped
+        .iter()
+        .map(|entry| entry.member.len())
+        .max()
+        .unwrap_or(0);
+
+    println!();
+    println!("{} left untouched:", "!".yellow());
+    for entry in skipped {
+        if let MemberOutcome::Skipped { reason } = &entry.outcome {
+            println!(
+                "  {:width$}  {}  {}",
+                entry.member.cyan(),
+                reason.describe(),
+                format!("→ {}", reason.recovery_hint()).dimmed(),
+                width = width
+            );
+        }
     }
 }
 
@@ -121,27 +210,4 @@ fn current() -> miette::Result<()> {
         std::process::exit(1);
     }
     Ok(())
-}
-
-fn load_config(path: &Path) -> miette::Result<ForestConfig> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| miette::miette!("Failed to read {}: {}", path.display(), e))?;
-    toml::from_str(&content)
-        .map_err(|e| miette::miette!("Failed to parse {}: {}", path.display(), e))
-}
-
-fn find_config() -> miette::Result<(std::path::PathBuf, ForestConfig)> {
-    let cwd = std::env::current_dir()
-        .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
-    let mut dir = cwd;
-    loop {
-        let config_path = dir.join("forester.toml");
-        if config_path.exists() {
-            let config = load_config(&config_path)?;
-            return Ok((dir, config));
-        }
-        if !dir.pop() {
-            return Err(miette::miette!("No forester.toml found"));
-        }
-    }
 }

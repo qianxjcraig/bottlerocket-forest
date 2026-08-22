@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use snafu::{ResultExt, Snafu};
 
-use crate::domain::{ForestConfig, ForestRoot, GroveName, GroveRoot};
+use crate::domain::{Checkout, ForestConfig, ForestRoot, GroveName, GroveRoot};
 use crate::events::{EventEmitter, ForesterEvent};
 use crate::git::BareRepository;
 use crate::hooks::{HookContext, HookRegistry, Trigger};
@@ -123,27 +123,17 @@ gitdir: /dev/null
                 member: &member.name,
             })?;
 
-        let target_branch = branch.unwrap_or_else(|| member.branch());
-        let use_new_branch = grove_name.to_string() != "develop" && branch.is_none();
-
-        if use_new_branch {
-            let new_branch = format!("{}/{}", grove_name, member.name);
-            BareRepository::checkout_new_branch(
-                &member_path,
-                &new_branch,
-                &format!("origin/{}", member.branch()),
-                !self.verbose,
-            )
-            .context(CheckoutSnafu {
-                member: &member.name,
-            })?;
-        } else {
-            BareRepository::checkout_branch(&member_path, target_branch, !self.verbose).context(
-                CheckoutSnafu {
-                    member: &member.name,
-                },
-            )?;
+        match Checkout::plan(grove_name, member, branch) {
+            Checkout::New { branch, start } => {
+                BareRepository::checkout_new_branch(&member_path, &branch, &start, !self.verbose)
+            }
+            Checkout::Existing { branch } => {
+                BareRepository::checkout_branch(&member_path, &branch, !self.verbose)
+            }
         }
+        .context(CheckoutSnafu {
+            member: &member.name,
+        })?;
 
         self.emitter.emit(&ForesterEvent::GroveWorktreeCreated {
             member: member.name.clone(),

@@ -37,9 +37,55 @@ forester sync-seed --verbose
 This updates the bare repos without affecting existing groves.
 New groves will use the updated refs.
 
+### Update a Grove
+
+`sync-seed` deliberately stops at the bare repos, so an existing grove stays where
+it was. `grove update` is the other half — it advances a grove's checkouts onto
+what was fetched:
+
+```bash
+forester grove update develop              # advance one grove
+forester update develop                    # sync-seed, then advance
+forester grove update                      # defaults to the current grove
+```
+
+Updating is offline: a grove member's `origin` is the forest's bare repo, so the
+network hop happens once, in `sync-seed`.
+
+Each member is classified before anything is touched, and the update refuses
+rather than guesses:
+
+| Checkout state | Result |
+|---|---|
+| clean, behind | fast-forwarded |
+| clean, current | left alone |
+| uncommitted changes | left alone, files reported |
+| local commits and behind | refused under `--ff-only`; replayed under `--strategy rebase` |
+| detached HEAD | left alone |
+| member missing from the grove | cloned, then advanced |
+
+Every refusal prints the command that resolves it. Nothing is stashed implicitly,
+`git pull` is never used, and a conflicted rebase is rolled back rather than left
+in progress.
+
+```bash
+forester grove update develop --dry-run              # classify, write nothing
+forester grove update develop --member twoliter      # restrict to one member
+forester grove update develop --strategy rebase      # replay local commits
+```
+
+To re-index after an update, add the `post-grove-update` trigger to a hook:
+
+```toml
+[[hook]]
+name = "crumbly"
+command = "update-context"
+triggers = ["post-grove-create", "post-grove-update"]
+```
+
 ### Manage Groves
 
-Create a new forest grove (creates git worktrees for all member repos):
+Create a new forest grove (clones every member repo into it):
 
 ```bash
 forester grove create feature-x

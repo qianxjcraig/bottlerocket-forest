@@ -114,6 +114,11 @@ expect_used = "deny"
 
 [workspace.lints.rust]
 missing_docs = "deny"
+# snafu 0.8's derive expands to assignments that rustc 1.93 reports as unused,
+# attributing them to the error variant's fields. The design style guide mandates
+# `#[snafu(module)]`, which is what triggers it, so every conformant error type in
+# the workspace would otherwise fail `-D warnings`. Revisit when snafu 0.9 lands.
+unused_assignments = "allow"
 
 # Compile gemm crates with opt-level=1 in dev profile to avoid fullfp16 issues on ARM64
 [profile.dev.package.gemm]

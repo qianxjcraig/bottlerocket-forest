@@ -32,9 +32,45 @@ pub enum Command {
     Seed(SeedArgs),
     /// Fetch latest changes for all member repositories
     SyncSeed(SyncSeedArgs),
+    /// Fetch upstream changes, then advance a grove onto them
+    Update(UpdateArgs),
     /// Manage forest groves
     #[command(subcommand)]
     Grove(GroveCommand),
+}
+
+/// How far an update may go to bring a checkout current.
+#[derive(Clone, Copy, Debug, Default, ValueEnum)]
+pub enum StrategyArg {
+    /// Only advance branches with no local commits
+    #[default]
+    FfOnly,
+    /// Replay local commits onto the new upstream base
+    Rebase,
+}
+
+impl From<StrategyArg> for crate::ops::Strategy {
+    fn from(arg: StrategyArg) -> Self {
+        match arg {
+            StrategyArg::FfOnly => Self::FfOnly,
+            StrategyArg::Rebase => Self::Rebase,
+        }
+    }
+}
+
+#[derive(Args, Debug)]
+pub struct UpdateArgs {
+    /// Grove to advance (defaults to the current grove)
+    pub name: Option<String>,
+    /// How far the update may go
+    #[arg(short, long, value_enum, default_value_t = StrategyArg::FfOnly)]
+    pub strategy: StrategyArg,
+    /// Report what would change without writing anything
+    #[arg(long)]
+    pub dry_run: bool,
+    /// Show verbose output
+    #[arg(short, long)]
+    pub verbose: bool,
 }
 
 #[derive(Args, Debug)]
@@ -76,6 +112,26 @@ pub enum GroveCommand {
     Status,
     /// Print current grove name
     Current,
+    /// Advance a grove's checkouts onto the last fetched commits
+    Update(GroveUpdateArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct GroveUpdateArgs {
+    /// Grove to update (defaults to the current grove)
+    pub name: Option<String>,
+    /// How far the update may go
+    #[arg(short, long, value_enum, default_value_t = StrategyArg::FfOnly)]
+    pub strategy: StrategyArg,
+    /// Restrict the update to specific members (repeatable)
+    #[arg(short, long = "member")]
+    pub members: Vec<String>,
+    /// Report intended actions without touching any checkout
+    #[arg(long)]
+    pub dry_run: bool,
+    /// Show verbose output
+    #[arg(short, long)]
+    pub verbose: bool,
 }
 
 #[derive(Args, Debug)]

@@ -71,6 +71,44 @@ impl EventEmitter for ConsoleEmitter {
             ForesterEvent::SyncSeedCompleted => {
                 eprintln!("{} Forest synced", "✓".green());
             }
+            ForesterEvent::GroveUpdateStarted { grove } => {
+                eprintln!("{} Updating grove '{}'", "→".cyan(), grove);
+            }
+            ForesterEvent::MemberUpdating { name } => {
+                if self.verbose {
+                    eprintln!("  {} {}", "updating".blue(), name);
+                }
+            }
+            ForesterEvent::MemberUpdated { name, detail } => {
+                eprintln!("  {} {} ({})", "↑".green(), name, detail);
+            }
+            ForesterEvent::MemberCurrent { name } => {
+                if self.verbose {
+                    eprintln!("  {} {}", "current".green(), name);
+                }
+            }
+            ForesterEvent::GroveUpdateCompleted {
+                grove,
+                updated,
+                skipped,
+            } => {
+                if *skipped > 0 {
+                    eprintln!(
+                        "{} Grove '{}' updated ({} advanced, {} left untouched)",
+                        "✓".green(),
+                        grove,
+                        updated,
+                        skipped
+                    );
+                } else {
+                    eprintln!(
+                        "{} Grove '{}' updated ({} advanced)",
+                        "✓".green(),
+                        grove,
+                        updated
+                    );
+                }
+            }
             ForesterEvent::GroveCreating { name } => {
                 eprintln!("{} Creating grove '{}'", "→".cyan(), name);
             }
